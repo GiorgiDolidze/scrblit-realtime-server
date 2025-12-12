@@ -1,6 +1,6 @@
 // index.js (Last working CORS/API key version)
 const express = require('express');
-const http = require = ('http');
+const http = require('http');
 const cors = require('cors');
 const { saveScribble } = require('./src/controllers/saveController');
 const { initWebSocketServer } = require('./src/services/websocketService');
@@ -49,3 +49,4 @@ initWebSocketServer(server);
 server.listen(PORT, () => {
     console.log(`HTTP Server listening on port ${PORT}`);
 });
+
