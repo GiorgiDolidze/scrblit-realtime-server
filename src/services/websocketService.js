@@ -6,7 +6,7 @@ const canvasState = require('../utils/canvasUtils');
 const { saveScribble } = require('../controllers/saveController');
 
 // Configuration constants
-const COVERAGE_THRESHOLD = 0.90; // 90% (from client config)
+const COVERAGE_THRESHOLD = 0.75; // REDUCED FROM 0.90 to 0.75
 
 let wss;
 
@@ -17,7 +17,6 @@ function initWebSocketServer(server) {
         console.log('Client connected. Total clients:', wss.clients.size);
         
         // --- REQUIREMENT 1: PERSISTENCE (Initial State Broadcast) ---
-        // Immediately send the current state of the canvas to the new client.
         const initialState = JSON.stringify({
             type: 'INITIAL_STATE',
             lines: canvasState.getLines()
@@ -35,21 +34,19 @@ function initWebSocketServer(server) {
                     // 2. Broadcast the line to all other connected clients
                     broadcast(JSON.stringify(data), ws);
 
-                    // 3. --- REQUIREMENT 2, 3, 4: CHECK COVERAGE AND TRIGGER SAVE LOOP ---
+                    // 3. --- CHECK COVERAGE AND TRIGGER SAVE LOOP ---
                     const coverage = canvasState.checkCoverage();
-                    console.log(`Current Coverage: ${(coverage * 100).toFixed(2)}%`);
+                    // Log to console only when coverage is high or changes significantly
+                    if (coverage > 0.60 || coverage % 0.05 < 0.01) {
+                         console.log(`Current Coverage: ${(coverage * 100).toFixed(2)}%`);
+                    }
                     
                     if (coverage >= COVERAGE_THRESHOLD) {
-                        console.log('90% COVERAGE REACHED. TRIGGERING SNAPSHOT AND RESET.');
+                        console.log(`${(COVERAGE_THRESHOLD * 100)}% COVERAGE REACHED. TRIGGERING SNAPSHOT AND RESET.`);
                         
                         // Tell all clients that a save is happening
                         broadcast(JSON.stringify({ type: 'TRIGGER_SAVE' }));
 
-                        // Perform the save operation asynchronously
-                        // The client sending the request (via HTTP POST) will handle the save itself,
-                        // but we can add server-side redundancy here if needed.
-                        // For the clean loop, the important step is the reset.
-                        
                         // 4. Reset server state for the infinite loop
                         canvasState.reset(); 
                     }
@@ -72,11 +69,6 @@ function initWebSocketServer(server) {
     console.log('WebSocket Server initialized.');
 }
 
-/**
- * Broadcasts a message to all connected clients, optionally excluding one sender.
- * @param {string} data - The JSON string to send.
- * @param {WebSocket} [excludeClient] - The client to exclude from the broadcast (usually the sender).
- */
 function broadcast(data, excludeClient = null) {
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN && client !== excludeClient) {
