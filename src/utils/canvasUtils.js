@@ -1,76 +1,111 @@
-/*
- * src/utils/canvasUtils.js
- * Helper functions for managing the conceptual server-side canvas state and coverage.
- */
+// src/utils/canvasUtils.js
+// Handles server-side state (list of lines) and canvas coverage calculation.
 
-// --- CONFIGURATION ---
-// These dimensions should conceptually match the client-side canvas area (e.g., 900x500 virtual pixels)
-const VIRTUAL_CANVAS_WIDTH = 900; 
-const VIRTUAL_CANVAS_HEIGHT = 500; 
+// NOTE: You must have the 'canvas' package installed on your Node.js server.
+const { createCanvas } = require('canvas'); 
 
-// The server needs to track covered area to decide when to snap.
-let coveredAreaScore = 0; 
-const MAX_SCORE = VIRTUAL_CANVAS_WIDTH * VIRTUAL_CANVAS_HEIGHT * 0.1; // Estimate max possible drawing activity before snap
-
-// The coverage threshold defined in the client CONFIG (0.9 or 90%)
-const COVERAGE_THRESHOLD = 0.9; 
-
-/**
- * Resets the canvas coverage score to zero after a successful save operation.
- */
-function resetCanvasState() {
-    coveredAreaScore = 0;
-    console.log('Canvas state reset. Score:', coveredAreaScore);
-}
-
-/**
- * Simulates recording drawing data to estimate coverage.
- * NOTE: For a production-grade app, this would use a library (like 'canvas' on Node) 
- * or a more complex spatial data structure to track actual covered pixels.
- * Here, we use a simple scoring system based on the line segment length.
- * * @param {number} x1 - Start X.
- * @param {number} y1 - Start Y.
- * @param {number} x2 - End X.
- * @param {number} y2 - End Y.
- */
-function recordDrawData(x1, y1, x2, y2) {
-    // Calculate the length of the line segment (Euclidean distance)
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    // Increase score based on distance (representing coverage)
-    // Scale the distance to account for the brush width (CONFIG.BRUSH_WIDTH is 8)
-    coveredAreaScore += distance * 0.5; // Arbitrary factor for scoring
-
-    // Ensure the score doesn't become ridiculously large
-    if (coveredAreaScore > MAX_SCORE) {
-        coveredAreaScore = MAX_SCORE;
-    }
-    
-    // console.log(`Current Score: ${coveredAreaScore.toFixed(2)} / ${MAX_SCORE.toFixed(2)}`);
-}
-
-/**
- * Checks if the current drawing coverage meets the snap threshold.
- * @returns {boolean} True if the canvas should be snapped and saved.
- */
-function checkThreshold() {
-    // Calculate the current percentage of coverage
-    const coveragePercentage = coveredAreaScore / MAX_SCORE;
-    
-    // Check if the score has crossed the threshold (90%)
-    if (coveragePercentage >= COVERAGE_THRESHOLD) {
-        // Crucial: Reset immediately to prevent multiple simultaneous save triggers
-        resetCanvasState(); 
-        return true;
+class CanvasState {
+    constructor(width = 900, height = 500) {
+        this.CANVAS_WIDTH = width;
+        this.CANVAS_HEIGHT = height;
+        this.lines = []; // Array of {x1, y1, x2, y2, color}
+        this.coverageCtx = null; 
     }
 
-    return false;
+    /**
+     * Initializes the server-side canvas context for accurate coverage tracking.
+     */
+    initCoverageContext() {
+        if (!this.coverageCtx) {
+            try {
+                const canvas = createCanvas(this.CANVAS_WIDTH, this.CANVAS_HEIGHT);
+                this.coverageCtx = canvas.getContext('2d');
+                
+                // Initialize to white
+                this.coverageCtx.fillStyle = '#FFFFFF';
+                this.coverageCtx.fillRect(0, 0, this.CANVAS_WIDTH, this.CANVAS_HEIGHT);
+                
+                this.coverageCtx.lineCap = 'round';
+            } catch (error) {
+                console.error("Failed to initialize server-side canvas context. Ensure 'canvas' package is installed.", error);
+            }
+        }
+    }
+
+    /**
+     * Adds a line to the state and redraws it on the coverage canvas.
+     * @param {object} line - {x1, y1, x2, y2, color}
+     */
+    addLine(line) {
+        this.lines.push(line);
+        if (this.coverageCtx) {
+            this.drawCoverageLine(line);
+        }
+    }
+
+    /**
+     * Draws a line onto the server's coverage canvas for calculation purposes.
+     * @param {object} line - {x1, y1, x2, y2, color}
+     */
+    drawCoverageLine(line) {
+        if (!this.coverageCtx) return;
+        
+        // Use a high-contrast color and fixed width for reliable coverage calculation
+        this.coverageCtx.strokeStyle = '#000000'; 
+        this.coverageCtx.lineWidth = 10; 
+        
+        this.coverageCtx.beginPath();
+        this.coverageCtx.moveTo(line.x1, line.y1);
+        this.coverageCtx.lineTo(line.x2, line.y2);
+        this.coverageCtx.stroke();
+        this.coverageCtx.closePath();
+    }
+
+    /**
+     * Calculates the percentage of the canvas covered by drawing.
+     * @returns {number} - Coverage percentage (0.0 to 1.0)
+     */
+    checkCoverage() {
+        if (!this.coverageCtx) return 0;
+
+        const imageData = this.coverageCtx.getImageData(0, 0, this.CANVAS_WIDTH, this.CANVAS_HEIGHT).data;
+        let coveredPixels = 0;
+        let totalPixels = this.CANVAS_WIDTH * this.CANVAS_HEIGHT;
+
+        // Iterate through all pixels (R, G, B, A components)
+        // Check the Red component. If it's less than 255 (not pure white), it's covered.
+        for (let i = 0; i < imageData.length; i += 4) {
+            if (imageData[i] < 255) {
+                coveredPixels++;
+            }
+        }
+        
+        return coveredPixels / totalPixels;
+    }
+    
+    /**
+     * Resets the canvas state and the server-side coverage context.
+     * This is called after a successful save snap.
+     */
+    reset() {
+        this.lines = [];
+        if (this.coverageCtx) {
+            this.coverageCtx.fillStyle = '#FFFFFF';
+            this.coverageCtx.fillRect(0, 0, this.CANVAS_WIDTH, this.CANVAS_HEIGHT);
+        }
+        console.log("Canvas state reset. Ready for new scribbles.");
+    }
+
+    /**
+     * Get the current line segments array (for INITIAL_STATE broadcast).
+     * @returns {Array} - The array of line objects.
+     */
+    getLines() {
+        return this.lines;
+    }
 }
 
-module.exports = {
-    recordDrawData,
-    checkThreshold,
-    resetCanvasState
-};
+// Export a singleton instance of the state
+const canvasState = new CanvasState();
+canvasState.initCoverageContext(); 
+module.exports = canvasState;
