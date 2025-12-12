@@ -1,7 +1,7 @@
 // index.js
 const express = require('express');
 const http = require('http');
-const cors = require('cors');
+const cors = require('cors'); // Now correctly included via package.json
 const { initWebSocketServer } = require('./src/services/websocketService');
 const { saveScribble } = require('./src/controllers/saveController');
 
@@ -10,9 +10,8 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 10000;
 
 // --- CORS Configuration ---
-// The server must only accept connections from your live domain (scrblit.com)
 const corsOptions = {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000', // Uses environment variable from Render
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000', 
     optionsSuccessStatus: 200
 };
 
@@ -39,7 +38,7 @@ app.post('/api/v1/save-scribble', async (req, res) => {
     const success = await saveScribble(imageData);
 
     if (success) {
-        // Note: The WebSocketService has already reset the canvas state.
+        // Note: The WebSocketService has already reset the canvas state on the server.
         res.status(200).json({ success: true, message: 'Image successfully archived.' });
     } else {
         res.status(500).json({ success: false, message: 'Failed to archive image.' });
