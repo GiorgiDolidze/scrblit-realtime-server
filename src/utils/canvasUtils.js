@@ -1,7 +1,6 @@
 // src/utils/canvasUtils.js
 // Handles server-side state (list of lines) and canvas coverage calculation.
 
-// NOTE: You must have the 'canvas' package installed on your Node.js server.
 const { createCanvas } = require('canvas'); 
 
 class CanvasState {
@@ -21,7 +20,7 @@ class CanvasState {
                 const canvas = createCanvas(this.CANVAS_WIDTH, this.CANVAS_HEIGHT);
                 this.coverageCtx = canvas.getContext('2d');
                 
-                // Initialize to white
+                // Initialize to a guaranteed WHITE background
                 this.coverageCtx.fillStyle = '#FFFFFF';
                 this.coverageCtx.fillRect(0, 0, this.CANVAS_WIDTH, this.CANVAS_HEIGHT);
                 
@@ -45,14 +44,16 @@ class CanvasState {
 
     /**
      * Draws a line onto the server's coverage canvas for calculation purposes.
+     * CRITICAL FIX: Use a very thick, high-contrast line to ensure full coverage.
      * @param {object} line - {x1, y1, x2, y2, color}
      */
     drawCoverageLine(line) {
         if (!this.coverageCtx) return;
         
-        // Use a high-contrast color and fixed width for reliable coverage calculation
+        // Use a high-contrast color (Black) and fixed, thick width (50px)
+        // to reliably fill space and minimize gaps between drawn strokes.
         this.coverageCtx.strokeStyle = '#000000'; 
-        this.coverageCtx.lineWidth = 10; 
+        this.coverageCtx.lineWidth = 50; 
         
         this.coverageCtx.beginPath();
         this.coverageCtx.moveTo(line.x1, line.y1);
@@ -74,7 +75,10 @@ class CanvasState {
 
         // Iterate through all pixels (R, G, B, A components)
         // Check the Red component. If it's less than 255 (not pure white), it's covered.
+        // This logic is correct, but relies on drawCoverageLine using a thick stroke.
         for (let i = 0; i < imageData.length; i += 4) {
+            // Check if the pixel is NOT white (R=255, G=255, B=255)
+            // Since we draw with pure black, checking R < 255 is sufficient.
             if (imageData[i] < 255) {
                 coveredPixels++;
             }
@@ -85,7 +89,6 @@ class CanvasState {
     
     /**
      * Resets the canvas state and the server-side coverage context.
-     * This is called after a successful save snap.
      */
     reset() {
         this.lines = [];
@@ -98,7 +101,6 @@ class CanvasState {
 
     /**
      * Get the current line segments array (for INITIAL_STATE broadcast).
-     * @returns {Array} - The array of line objects.
      */
     getLines() {
         return this.lines;
