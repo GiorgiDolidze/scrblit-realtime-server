@@ -2,41 +2,38 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+// Import the modified saveController which no longer requires client image data
+const { saveFinalizedScribble } = require('./src/controllers/saveController'); 
 const { initWebSocketServer } = require('./src/services/websocketService');
-const { saveScribble } = require('./src/controllers/saveController');
 
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 10000;
 
 // --- CORS Configuration ---
-// CRITICAL FIX: Use the actual live domain for CORS_ORIGIN
 const corsOptions = {
-    origin: process.env.CORS_ORIGIN || 'https://scrblit.com', // Changed default to live domain
+    origin: process.env.CORS_ORIGIN || 'https://scrblit.com', 
     optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
-// Allows large JSON payloads (for the base64 image data when saving)
+// Allows large JSON payloads (no longer strictly needed, but kept for robustness)
 app.use(express.json({ limit: '5mb' })); 
 
 // --- HTTP Routes ---
 
-// Health check endpoint for Render
 app.get('/', (req, res) => {
     res.send('Server is running and healthy.');
 });
 
-// Endpoint for the client to trigger the save process (Requirement 3)
+// Endpoint for the client to trigger the save process (Now just a signal to finalize)
 app.post('/api/v1/save-scribble', async (req, res) => {
-    const { imageData } = req.body;
-
-    if (!imageData) {
-        return res.status(400).json({ success: false, message: 'Missing imageData.' });
-    }
+    // The client no longer sends image data. We just signal the controller to finalize the save 
+    // using the state already retained on the server side.
+    console.log('Received save signal from client. Attempting to finalize server-side save...');
     
-    // Call the controller to securely forward the PNG data to cPanel
-    const success = await saveScribble(imageData);
+    // CRITICAL FIX: The saveController must handle the save internally without relying on req.body.imageData
+    const success = await saveFinalizedScribble(); 
 
     if (success) {
         // The server-side reset happens via WebSocket broadcast.
