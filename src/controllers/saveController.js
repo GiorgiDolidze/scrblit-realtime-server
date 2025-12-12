@@ -12,9 +12,11 @@ const CPANEL_SAVE_URL = 'https://scrblit.com/api/upload_image.php';
  * @returns {Promise<boolean>} - True if the save was successful, false otherwise.
  */
 async function saveScribble(imageData) {
+    // CRITICAL: Must read the environment variable set in the Render dashboard
     const apiKey = process.env.CPANEL_API_KEY;
     
     if (!apiKey) {
+        // FATAL ERROR: This log should ONLY appear if the variable is unset.
         console.error("FATAL ERROR: CPANEL_API_KEY is not set in Render environment variables. This caused a 401 error.");
         return false;
     }
@@ -22,7 +24,7 @@ async function saveScribble(imageData) {
     // Extract the raw base64 string from the data URL
     const base64Data = imageData.replace(/^data:image\/png;base64,/, "");
 
-    // Generate a unique filename
+    // Generate a unique filename based on the current timestamp
     const fileName = `scribble_${Date.now()}.png`;
 
     try {
@@ -31,7 +33,7 @@ async function saveScribble(imageData) {
         console.log(`Forwarding save to cPanel with API Key (partial): ${apiKey.substring(0, 4)}...`);
 
         const response = await axios.post(CPANEL_SAVE_URL, {
-            apiKey: apiKey, // The full key is sent here
+            apiKey: apiKey, // The full key is sent here for validation
             fileName: fileName,
             imageBase64: base64Data
         });
