@@ -1,38 +1,32 @@
-// src/controllers/saveController.js
+// src/controllers/saveController.js (Last working API key version)
 const axios = require('axios');
-// Import the canvas state retention utility
-const { getRetainedImageData } = require('../utils/canvasUtils'); 
+const canvasState = require('../utils/canvasUtils');
 
 const CPANEL_SAVE_URL = 'https://scrblit.com/api/upload_image.php';
 
 /**
- * Handles forwarding the server-retained image data to the cPanel PHP script.
- * This is called after the TRIGGER_SAVE event, using data saved internally by the server.
- * @returns {Promise<boolean>} - True if the save was successful, false otherwise.
+ * Handles the HTTP POST request from a client containing the base64 image data 
+ * and forwards it securely to the cPanel PHP script.
  */
-async function saveFinalizedScribble() {
+async function saveScribble(imageData) {
     const apiKey = process.env.CPANEL_API_KEY;
-    const retainedData = getRetainedImageData(); // Retrieve the data saved by the server 
-
+    
     if (!apiKey) {
         console.error("FATAL ERROR: CPANEL_API_KEY is not set in Render environment variables.");
         return false;
     }
-    
-    if (!retainedData) {
-        console.warn("Save requested, but no image data was retained by the server state.");
-        return false;
-    }
 
-    // Server-retained data is expected to be the full base64 data URL
-    const base64Data = retainedData.replace(/^data:image\/png;base64,/, "");
+    // Extract the raw base64 string from the data URL
+    const base64Data = imageData.replace(/^data:image\/png;base64,/, "");
+
+    // Generate a unique filename
     const fileName = `scribble_${Date.now()}.png`;
 
     try {
-        console.log(`Forwarding retained image data to cPanel with API Key (partial): ${apiKey.substring(0, 4)}...`);
+        console.log(`Forwarding save to cPanel with API Key (partial): ${apiKey.substring(0, 4)}...`);
 
         const response = await axios.post(CPANEL_SAVE_URL, {
-            apiKey: apiKey, 
+            apiKey: apiKey,
             fileName: fileName,
             imageBase64: base64Data
         });
@@ -55,5 +49,5 @@ async function saveFinalizedScribble() {
 }
 
 module.exports = {
-    saveFinalizedScribble
+    saveScribble
 };
