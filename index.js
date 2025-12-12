@@ -1,20 +1,18 @@
-// index.js
+// index.js (Last working CORS/API key version)
 const express = require('express');
-const http = require('http');
+const http = require = ('http');
 const cors = require('cors');
-// Ensure this import path and function name are correct
-const { saveFinalizedScribble } = require('./src/controllers/saveController'); 
+const { saveScribble } = require('./src/controllers/saveController');
 const { initWebSocketServer } = require('./src/services/websocketService');
 
 const app = express();
-const PORT = process.env.PORT || 10000; 
 const server = http.createServer(app);
+const PORT = process.env.PORT || 10000;
 
-// --- CRITICAL CORS FIX: Fallback to the environment variable set earlier ---
-// This uses the CORS_ORIGIN variable you set to https://scrblit.com
+// --- CORS Configuration (The version that worked) ---
 const corsOptions = {
     origin: process.env.CORS_ORIGIN || 'https://scrblit.com', 
-    optionsSuccessStatus: 200 
+    optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
@@ -26,16 +24,20 @@ app.get('/', (req, res) => {
     res.send('Server is running and healthy.');
 });
 
+// Endpoint for the client to send the base64 image data
 app.post('/api/v1/save-scribble', async (req, res) => {
-    console.log('Received save signal from client. Attempting to finalize server-side save...');
+    const { imageData } = req.body; 
     
-    // Call the controller which handles retrieving the retained data and forwarding it to cPanel
-    const success = await saveFinalizedScribble(); 
+    if (!imageData) {
+        return res.status(400).json({ success: false, message: 'No image data provided.' });
+    }
+
+    const success = await saveScribble(imageData); 
 
     if (success) {
         res.status(200).json({ success: true, message: 'Image successfully archived.' });
     } else {
-        res.status(500).json({ success: false, message: 'Failed to archive image (Check Render logs).' });
+        res.status(500).json({ success: false, message: 'Failed to archive image.' });
     }
 });
 
