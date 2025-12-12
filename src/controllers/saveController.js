@@ -1,87 +1,48 @@
-/*
- * src/controllers/saveController.js
- * Handles the image save request from the client and transfers the file to cPanel.
- */
-
-require('dotenv').config();
+// src/controllers/saveController.js
 const axios = require('axios');
-const canvasUtils = require('../utils/canvasUtils');
+const canvasState = require('../utils/canvasUtils');
 
-// Environment variables from .env
-const C_PANEL_API_KEY = process.env.C_PANEL_API_KEY;
-const C_PANEL_UPLOAD_URL = process.env.C_PANEL_UPLOAD_URL;
+// Your cPanel endpoint to save the image (from config.js file)
+// We assume the cPanel is scrblit.com
+const CPANEL_SAVE_URL = 'https://scrblit.com/api/upload_image.php';
 
 /**
- * Handles the POST request from the client to save the current canvas as a PNG.
- * * @param {object} req - Express request object (contains imageData in body).
- * @param {object} res - Express response object.
+ * Handles the HTTP POST request from a client containing the base64 image data 
+ * and forwards it securely to the cPanel PHP script.
+ * * @param {string} imageData - The base64 data URL of the canvas image.
+ * @returns {Promise<boolean>} - True if the save was successful, false otherwise.
  */
-async function handleSaveRequest(req, res) {
-    const { imageData } = req.body;
-
-    if (!imageData || !imageData.startsWith('data:image/png;base64,')) {
-        return res.status(400).json({ 
-            success: false, 
-            message: 'Invalid or missing image data.' 
-        });
-    }
-
-    // 1. Generate a unique filename (using a timestamp is reliable)
-    const timestamp = Date.now();
-    const fileName = `scribble_${timestamp}.png`;
-    
-    // 2. Extract the base64 part of the image data
+async function saveScribble(imageData) {
+    // Extract the raw base64 string from the data URL
     const base64Data = imageData.replace(/^data:image\/png;base64,/, "");
 
-    // 3. Prepare data for transfer to cPanel server
-    const payload = {
-        fileName: fileName,
-        imageBase64: base64Data,
-        // The cPanel side will use this key to authenticate the request
-        apiKey: C_PANEL_API_KEY 
-    };
-
-    console.log(`Attempting to transfer file: ${fileName} to cPanel...`);
+    // Generate a unique filename
+    const fileName = `scribble_${Date.now()}.png`;
 
     try {
-        // Use axios to send the image data to the dedicated cPanel upload endpoint
-        const response = await axios.post(C_PANEL_UPLOAD_URL, payload, {
-            headers: {
-                'Content-Type': 'application/json'
-            }
+        // --- SECURE FORWARD TO CPANEL ---
+        const response = await axios.post(CPANEL_SAVE_URL, {
+            // Your API Key is pulled from the Render environment variables
+            apiKey: process.env.CPANEL_API_KEY, 
+            fileName: fileName,
+            imageBase64: base64Data
         });
 
-        // 4. Check the response from the cPanel server
         if (response.status === 200 && response.data.success) {
-            console.log(`Successfully saved ${fileName} on cPanel.`);
-            
-            // Optional: Reset coverage score immediately on successful save (done in canvasUtils.js)
-            // canvasUtils.resetCanvasState(); 
-
-            return res.status(200).json({ 
-                success: true, 
-                message: 'Image successfully archived.', 
-                fileName: fileName 
-            });
+            console.log(`Successfully saved ${fileName} to cPanel.`);
+            return true;
         } else {
-            // Log specific error from the cPanel server if available
-            console.error('cPanel server error:', response.data.message || 'Unknown response');
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Failed to save image on cPanel server.' 
-            });
+            console.error('cPanel save script returned failure:', response.data.message);
+            return false;
         }
-
     } catch (error) {
-        console.error('Error during file transfer to cPanel:', error.message);
-        // Respond with a 500 status for internal server errors (e.g., network issues)
-        return res.status(500).json({ 
-            success: false, 
-            message: 'Server error during external transfer.' 
-        });
+        console.error('Error forwarding save request to cPanel:', error.message);
+        // Important: If the save fails, we still want to reset the state 
+        // to prevent the canvas from getting stuck, but for now, we return false.
+        return false;
     }
 }
 
 module.exports = {
-    handleSaveRequest
+    saveScribble
 };
