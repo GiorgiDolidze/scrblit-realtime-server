@@ -1,69 +1,56 @@
-/*
- * index.js
- * Server entry point for the Scrblit Real-time and API handler.
- */
-
-// Load environment variables from .env file
-require('dotenv').config();
-
+// index.js
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
-const saveController = require('./src/controllers/saveController');
-const websocketService = require('./src/services/websocketService');
+const cors = require('cors');
+const { initWebSocketServer } = require('./src/services/websocketService');
+const { saveScribble } = require('./src/controllers/saveController');
 
 const app = express();
 const server = http.createServer(app);
+const PORT = process.env.PORT || 10000;
 
-// Use the PORT from .env or default to 8080 (Render usually sets this)
-const PORT = process.env.PORT || 8080; 
-const CORS_ORIGIN = process.env.CORS_ORIGIN;
+// --- CORS Configuration ---
+// The server must only accept connections from your live domain (scrblit.com)
+const corsOptions = {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000', // Uses environment variable from Render
+    optionsSuccessStatus: 200
+};
 
-// --- 1. EXPRESS MIDDLEWARE ---
+app.use(cors(corsOptions));
+// Allows large JSON payloads (for the base64 image data when saving)
+app.use(express.json({ limit: '5mb' })); 
 
-// Parse JSON request bodies (needed for the image save endpoint)
-app.use(express.json({ limit: '5mb' })); // Increase limit for large image data
+// --- HTTP Routes ---
 
-// CORS Configuration
-app.use((req, res, next) => {
-    // Only allow requests from the defined cPanel URL
-    const allowedOrigins = [CORS_ORIGIN, 'http://localhost:3000']; // Add localhost for development
-    const origin = req.headers.origin;
-    
-    if (allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
+// Health check endpoint for Render
+app.get('/', (req, res) => {
+    res.send('Server is running and healthy.');
+});
+
+// Endpoint for the client to trigger the save process (Requirement 3)
+app.post('/api/v1/save-scribble', async (req, res) => {
+    const { imageData } = req.body;
+
+    if (!imageData) {
+        return res.status(400).json({ success: false, message: 'Missing imageData.' });
     }
     
-    res.header('Access-Control-Allow-Methods', 'GET, POST');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
-    next();
+    // Call the controller to securely forward the PNG data to cPanel
+    const success = await saveScribble(imageData);
+
+    if (success) {
+        // Note: The WebSocketService has already reset the canvas state.
+        res.status(200).json({ success: true, message: 'Image successfully archived.' });
+    } else {
+        res.status(500).json({ success: false, message: 'Failed to archive image.' });
+    }
 });
 
 
-// --- 2. HTTP ROUTES (API) ---
+// Initialize WebSocket Server
+initWebSocketServer(server);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-    res.status(200).send('Scrblit server is running.');
-});
-
-// Image Save Endpoint (POST request from client-app.js)
-// This calls the saveController to handle image processing and transfer.
-app.post('/api/v1/save-scribble', saveController.handleSaveRequest);
-
-
-// --- 3. WEB SOCKET SERVER ---
-
-// Initialize WebSocket Server, binding it to the existing HTTP server
-const wss = new WebSocket.Server({ server });
-
-// Pass the WebSocket Server instance to the service handler
-websocketService.initialize(wss);
-
-
-// --- 4. START SERVER ---
-
+// Start the HTTP server
 server.listen(PORT, () => {
     console.log(`HTTP Server listening on port ${PORT}`);
-    console.log(`WebSocket Server initialized on port ${PORT}`);
 });
