@@ -1,39 +1,38 @@
 // src/controllers/saveController.js
 const axios = require('axios');
-const canvasState = require('../utils/canvasUtils');
+// Import the canvas state retention utility
+const { getRetainedImageData } = require('../utils/canvasUtils'); 
 
-// Your cPanel endpoint to save the image 
 const CPANEL_SAVE_URL = 'https://scrblit.com/api/upload_image.php';
 
 /**
- * Handles the HTTP POST request from a client containing the base64 image data 
- * and forwards it securely to the cPanel PHP script.
- * @param {string} imageData - The base64 data URL of the canvas image.
+ * Handles forwarding the server-retained image data to the cPanel PHP script.
+ * This is called after the TRIGGER_SAVE event, using data saved internally by the server.
  * @returns {Promise<boolean>} - True if the save was successful, false otherwise.
  */
-async function saveScribble(imageData) {
-    // CRITICAL: Must read the environment variable set in the Render dashboard
+async function saveFinalizedScribble() {
     const apiKey = process.env.CPANEL_API_KEY;
-    
+    const retainedData = getRetainedImageData(); // Retrieve the data saved by the server 
+
     if (!apiKey) {
-        // FATAL ERROR: This log should ONLY appear if the variable is unset.
-        console.error("FATAL ERROR: CPANEL_API_KEY is not set in Render environment variables. This caused a 401 error.");
+        console.error("FATAL ERROR: CPANEL_API_KEY is not set in Render environment variables.");
+        return false;
+    }
+    
+    if (!retainedData) {
+        console.warn("Save requested, but no image data was retained by the server state.");
         return false;
     }
 
-    // Extract the raw base64 string from the data URL
-    const base64Data = imageData.replace(/^data:image\/png;base64,/, "");
-
-    // Generate a unique filename based on the current timestamp
+    // Server-retained data is expected to be the full base64 data URL
+    const base64Data = retainedData.replace(/^data:image\/png;base64,/, "");
     const fileName = `scribble_${Date.now()}.png`;
 
     try {
-        // --- SECURE FORWARD TO CPANEL ---
-        // Log the key (first 4 chars) to confirm it's being read from the environment
-        console.log(`Forwarding save to cPanel with API Key (partial): ${apiKey.substring(0, 4)}...`);
+        console.log(`Forwarding retained image data to cPanel with API Key (partial): ${apiKey.substring(0, 4)}...`);
 
         const response = await axios.post(CPANEL_SAVE_URL, {
-            apiKey: apiKey, // The full key is sent here for validation
+            apiKey: apiKey, 
             fileName: fileName,
             imageBase64: base64Data
         });
@@ -42,15 +41,11 @@ async function saveScribble(imageData) {
             console.log(`Successfully saved ${fileName} to cPanel.`);
             return true;
         } else {
-            // Log full response for debugging if PHP returns success: false
             console.error('cPanel save script returned failure:', response.data.message);
             return false;
         }
     } catch (error) {
-        // Detailed error handling for Axios errors (like 401, 503, network issues)
-        if (error.response && error.response.status === 401) {
-             console.error('Error forwarding save request to cPanel: 401 Unauthorized. The API Key is likely incorrect or the PHP script is misconfigured.');
-        } else if (error.response) {
+        if (error.response) {
              console.error(`Error forwarding save request to cPanel: HTTP Status ${error.response.status}.`, error.response.data);
         } else {
              console.error('Error forwarding save request to cPanel (Network/Timeout):', error.message);
@@ -60,5 +55,5 @@ async function saveScribble(imageData) {
 }
 
 module.exports = {
-    saveScribble
+    saveFinalizedScribble
 };
